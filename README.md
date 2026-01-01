@@ -1,63 +1,62 @@
-# Pythia
+# Pythia – Research Desk
 
-Welcome to **Pythia**, a ChatGPT-like AI assistant inspired by the ancient Oracle of Delphi.
+Pythia is a Streamlit “Research Desk” that uses Perplexity Sonar (Pro or Deep Research) via the OpenAI-compatible API to produce structured research briefs with citations. It returns a summary plus a table of sources and video angles, with CSV/JSON/Markdown downloads and in-session chat history.
 
-## 🏛️ Mythological Inspiration
+## Features
 
-In Greek mythology, **Pythia** was the revered high priestess of the Temple of Apollo at Delphi. Known as the oracle, she entered an ecstatic trance—said to be induced by sacred vapors—and spoke Apollo's prophecies, which were then interpreted by priests. Her ambiguous yet profound pronouncements guided individuals and city-states alike.
+- Perplexity Sonar models: `sonar-pro` and `sonar-deep-research`.
+- Structured outputs enforced by JSON schema (summary + items).
+- Streamlit UI with sidebar controls (API key, model, max items, time window, output style).
+- Downloads: CSV, JSON, and Markdown brief.
+- In-memory session state for chat history and last run (no DB in MVP).
 
-> *“If you go, you will come back never.”*
->
-> —Pythia’s cryptic response to King Croesus of Lydia
+## Requirements
 
-**Pythia** embodied the bridge between mortals and the divine: a living conduit for insight and guidance.
+- Python 3.9+ (works with `pip` or `conda` environments).
+- Perplexity API key (`PERPLEXITY_API_KEY`).
 
-## 💻 About This Project
+## Setup
 
-**Pythia** is a modern tribute to that tradition: an AI-powered conversational agent that channels the spirit of Delphi. It leverages OpenAI (or compatible) API keys on the backend to generate context-aware, oracular responses.
+1. Clone and enter the project:
 
-### Features
+```bash
+git clone https://github.com/yourusername/pythia.git
+cd pythia
+```
 
-* **Conversational AI**: Natural language understanding and generation.
-* **Customizable**: Plug in your own API keys and configure personality, tone, and knowledge scope.
-* **Extensible**: Designed for easy integration of additional AI providers or domain-specific modules.
-* **Secure**: API keys and credentials are loaded from environment variables to keep secrets safe.
+1. Install dependencies (pip):
 
-## 🚀 Getting Started
+```bash
+pip install -r requirements.txt
+```
 
-1. **Clone the repository**
+Or with conda:
 
-   ```bash
-   git clone https://github.com/yourusername/pythia.git
-   cd pythia
-   ```
+```bash
+conda create -n pythia python=3.11
+conda activate pythia
+pip install -r requirements.txt
+```
 
-2. **Install dependencies**
+1. Provide your Perplexity API key (environment or Streamlit sidebar):
 
-   ```bash
-   npm install     # or pip install -r requirements.txt
-   ```
+```env
+PERPLEXITY_API_KEY=ppx-...
+```
 
-3. **Setup environment**
+## Run
 
-   * Create a `.env` file with your AI provider keys:
+```bash
+streamlit run app.py
+```
 
-     ```env
-     OPENAI_API_KEY=sk-...your key...
-     ```
+Then open the provided local URL. Enter a topic, pick a model, and run research to see the summary, table, and download options.
 
-4. **Run the application**
+## Notes
 
-   ```bash
-   npm start       # or python app.py
-   ```
+- If structured output parsing fails, the app surfaces the raw response and offers a “retry with strict JSON.”
+- Future-ready for containerization or persistence (e.g., SQLite), but current MVP is in-memory only.
 
-5. **Chat with Pythia** Navigate to `http://localhost:3000` (or your configured port) and ask Pythia for guidance.
-
-## ⚖️ License
+## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
----
-
-*Can Pythia guide you to enlightenment? Only one way to find out...*

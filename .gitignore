@@ -1,0 +1,11 @@
+__pycache__/
+.pytest_cache/
+.DS_Store
+.env
+secrets.env
+.streamlit/secrets.toml
+
+# Byte-compiled / compiled
+*.py[cod]
+*$py.class
+
