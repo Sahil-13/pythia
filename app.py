@@ -49,15 +49,18 @@ def sidebar_controls():
         ["Creator Research Brief", "Source Table Only", "Contrarian / Debate angles"],
         index=0,
     )
+    search_mode_label = st.sidebar.radio("Search mode", ["Default (Web)", "Reddit-only"], index=0)
+    search_mode = "reddit" if "Reddit" in search_mode_label else "default"
+    st.session_state["search_mode"] = search_mode
 
     if st.sidebar.button("Clear chat / reset"):
         st.session_state.messages = []
         st.session_state.latest_df = None
         st.session_state.latest_json = None
         st.session_state.run_history = []
-        st.experimental_rerun()
+        st.rerun()
 
-    return api_key_input or env_key, model, max_items, time_window, output_style
+    return api_key_input or env_key, model, max_items, time_window, output_style, search_mode
 
 
 def render_chat():
@@ -67,19 +70,37 @@ def render_chat():
 
 
 def build_api_messages(user_prompt: str) -> List[Dict[str, str]]:
-    history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]]
+    raw_history = [{"role": m.get("role"), "content": m.get("content")} for m in st.session_state.messages[:-1]]
+
+    # Enforce user/assistant alternation after the system prompt to satisfy API requirements.
+    cleaned: List[Dict[str, str]] = []
+    last_role: Optional[str] = None
+    for m in raw_history:
+        if not m.get("role") or not m.get("content"):
+            continue
+        if last_role == m["role"]:
+            continue
+        cleaned.append(m)
+        last_role = m["role"]
+
+    # Drop leading assistant messages if present (API expects user first after system).
+    while cleaned and cleaned[0]["role"] != "user":
+        cleaned.pop(0)
+
     api_messages: List[Dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
-    api_messages.extend(history)
+    api_messages.extend(cleaned)
     api_messages.append({"role": "user", "content": user_prompt})
     return api_messages
 
 
 def main():
     init_session_state()
-    api_key, model, max_items, time_window, output_style = sidebar_controls()
+    api_key, model, max_items, time_window, output_style, search_mode = sidebar_controls()
 
     st.title("Research Desk")
     st.caption("Perplexity Sonar-powered research with structured outputs.")
+    mode_label = "Reddit-only" if search_mode == "reddit" else "Default / Web"
+    st.caption(f"Active search mode: {mode_label}")
 
     render_chat()
 
@@ -98,6 +119,7 @@ def main():
                 max_items=max_items,
                 time_window=time_window if time_window != "None" else "",
                 output_style=output_style,
+                search_mode=search_mode,
             )
             api_messages = build_api_messages(user_prompt=user_prompt)
 

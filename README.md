@@ -7,6 +7,7 @@ Pythia is a Streamlit “Research Desk” that uses Perplexity Sonar (Pro or Dee
 - Perplexity Sonar models: `sonar-pro` and `sonar-deep-research`.
 - Structured outputs enforced by JSON schema (summary + items).
 - Streamlit UI with sidebar controls (API key, model, max items, time window, output style).
+- Search modes: Default/Web or Reddit-only (prompts Perplexity to use subreddit pages; no Reddit API keys required).
 - Downloads: CSV, JSON, and Markdown brief.
 - In-memory session state for chat history and last run (no DB in MVP).
 
@@ -55,6 +56,7 @@ Then open the provided local URL. Enter a topic, pick a model, and run research 
 ## Notes
 
 - If structured output parsing fails, the app surfaces the raw response and offers a “retry with strict JSON.”
+- Reddit-only mode relies on Perplexity’s web search of subreddit pages (no direct Reddit API access); time windows are respected via prompting.
 - Future-ready for containerization or persistence (e.g., SQLite), but current MVP is in-memory only.
 
 ## License
