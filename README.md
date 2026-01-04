@@ -10,6 +10,7 @@ Pythia is a Streamlit “Research Desk” that uses Perplexity Sonar (Pro or Dee
 - Search modes: Default/Web or Reddit-only (prompts Perplexity to use subreddit pages; no Reddit API keys required).
 - Downloads: CSV, JSON, and Markdown brief.
 - In-memory session state for chat history and last run (no DB in MVP).
+- Optional shared-password gate (`APP_PASSWORD` via Streamlit secrets or env).
 
 ## Requirements
 
@@ -43,6 +44,7 @@ pip install -r requirements.txt
 
 ```env
 PERPLEXITY_API_KEY=ppx-...
+APP_PASSWORD=your-shared-password
 ```
 
 ## Run
@@ -57,6 +59,7 @@ Then open the provided local URL. Enter a topic, pick a model, and run research 
 
 - If structured output parsing fails, the app surfaces the raw response and offers a “retry with strict JSON.”
 - Reddit-only mode relies on Perplexity’s web search of subreddit pages (no direct Reddit API access); time windows are respected via prompting.
+- Shared-password gate: set `APP_PASSWORD` in Streamlit secrets; users must enter it to unlock the app. Remove it (or leave empty) to disable the gate.
 - Future-ready for containerization or persistence (e.g., SQLite), but current MVP is in-memory only.
 
 ## License

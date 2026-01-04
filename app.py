@@ -1,9 +1,10 @@
 import os
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 import streamlit as st
+from streamlit.runtime.secrets import Secrets, StreamlitSecretNotFoundError
 
 from perplexity_client import PerplexityClient
 from prompts import SYSTEM_PROMPT, build_user_prompt
@@ -22,12 +23,22 @@ load_dotenv("secrets.env", override=False)  # optional secrets file; won't overr
 st.set_page_config(page_title="Pythia", layout="wide")
 
 
+def get_shared_password() -> str:
+    try:
+        secrets: Optional[Secrets] = st.secrets
+        secret_pw = secrets.get("APP_PASSWORD", "") if secrets else ""
+    except StreamlitSecretNotFoundError:
+        secret_pw = ""
+    return secret_pw or os.getenv("APP_PASSWORD", "")
+
+
 def init_session_state() -> None:
     defaults: Dict[str, List[Dict[str, str]]] = {
         "messages": [],
         "latest_df": None,
         "latest_json": None,
         "run_history": [],
+        "auth_ok": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -37,8 +48,15 @@ def init_session_state() -> None:
 def sidebar_controls():
     st.sidebar.header("Controls")
     api_key_input = st.sidebar.text_input("Perplexity API Key", type="password")
+    try:
+        secrets: Optional[Secrets] = st.secrets
+        secret_key = secrets.get("PERPLEXITY_API_KEY") if secrets else None
+    except StreamlitSecretNotFoundError:
+        secret_key = None
     env_key = os.getenv("PERPLEXITY_API_KEY")
-    if not api_key_input and env_key:
+    if not api_key_input and secret_key:
+        st.sidebar.caption("Using PERPLEXITY_API_KEY from Streamlit secrets.")
+    elif not api_key_input and env_key:
         st.sidebar.caption("Using PERPLEXITY_API_KEY from environment.")
 
     model = st.sidebar.radio("Model", options=["sonar-pro", "sonar-deep-research"], index=0)
@@ -58,9 +76,11 @@ def sidebar_controls():
         st.session_state.latest_df = None
         st.session_state.latest_json = None
         st.session_state.run_history = []
+        st.session_state.auth_ok = False
         st.rerun()
 
-    return api_key_input or env_key, model, max_items, time_window, output_style, search_mode
+    resolved_key = api_key_input or secret_key or env_key
+    return resolved_key, model, max_items, time_window, output_style, search_mode
 
 
 def render_chat():
@@ -95,6 +115,22 @@ def build_api_messages(user_prompt: str) -> List[Dict[str, str]]:
 
 def main():
     init_session_state()
+    shared_pw = get_shared_password()
+
+    if not st.session_state.get("auth_ok", False):
+        st.title("Research Desk")
+        st.caption("Enter password to continue.")
+        pw_input = st.text_input("App password", type="password")
+        if st.button("Unlock"):
+            if shared_pw and pw_input == shared_pw:
+                st.session_state.auth_ok = True
+                st.rerun()
+            else:
+                st.error("Invalid password.")
+        if not shared_pw:
+            st.info("No APP_PASSWORD configured in secrets; set one to enable access control.")
+        return
+
     api_key, model, max_items, time_window, output_style, search_mode = sidebar_controls()
 
     st.title("Research Desk")
