@@ -33,6 +33,8 @@ def _build_search_instructions(search_mode: str, time_window: str) -> tuple[str,
   https://www.reddit.com/r/UnresolvedMysteries/,
   https://www.reddit.com/r/AskHistorians/,
   https://www.reddit.com/r/Damnthatsinteresting/
+  https://www.reddit.com/r/mystery/
+  https://www.reddit.com/r/Phenomenology/
 - Prioritize top or highly upvoted posts within the requested time window; if none provided, favor the last month.
 - Return subreddit + post URLs in the url field; include subreddit names in source_title when helpful.
 - Skip non-Reddit domains."""
