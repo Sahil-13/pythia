@@ -5,7 +5,16 @@ from typing import Dict, List, Optional
 from dotenv import load_dotenv
 import streamlit as st
 from streamlit.runtime.secrets import Secrets, StreamlitSecretNotFoundError
+import pandas as pd
 
+from db import (
+    delete_run,
+    fetch_latest_run,
+    fetch_run_with_messages,
+    fetch_runs,
+    init_db,
+    save_run,
+)
 from perplexity_client import PerplexityClient
 from prompts import SYSTEM_PROMPT, build_user_prompt
 from utils import (
@@ -37,8 +46,14 @@ def init_session_state() -> None:
         "messages": [],
         "latest_df": None,
         "latest_json": None,
+        "latest_summary": None,
+        "latest_topic": None,
         "run_history": [],
         "auth_ok": False,
+        "db_ready": False,
+        "db_checked": False,
+        "db_error": "",
+        "selected_run_id": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -71,13 +86,54 @@ def sidebar_controls():
     search_mode = "reddit" if "Reddit" in search_mode_label else "default"
     st.session_state["search_mode"] = search_mode
 
+    if st.session_state.get("db_ready"):
+        runs = fetch_runs(limit=20)
+        options = ["(latest)"] + [f"Run {r['id']} • {r['topic'] or '(no topic)'}" for r in runs]
+        selection = st.sidebar.selectbox("Saved runs", options, index=0, key="runs_selectbox")
+        if selection != "(latest)":
+            try:
+                run_idx = options.index(selection) - 1
+                run_id = runs[run_idx]["id"]
+                run, msgs, items = fetch_run_with_messages(run_id)
+                if run and msgs:
+                    st.session_state.messages = [{"role": m["role"], "content": m["content"]} for m in msgs]
+                    st.session_state.latest_summary = run.get("summary")
+                    st.session_state.latest_json = run.get("raw_json")
+                    st.session_state.latest_topic = run.get("topic")
+                    st.session_state.latest_df = pd.DataFrame(items) if items else None
+                    st.session_state.selected_run_id = run_id
+                else:
+                    st.sidebar.caption("No messages in this run.")
+            except Exception as exc:
+                st.sidebar.caption(f"Could not load run: {exc}")
+        else:
+            st.session_state.selected_run_id = None
+
     if st.sidebar.button("Clear chat / reset"):
         st.session_state.messages = []
         st.session_state.latest_df = None
         st.session_state.latest_json = None
+        st.session_state.latest_summary = None
+        st.session_state.latest_topic = None
         st.session_state.run_history = []
         st.session_state.auth_ok = False
+        st.session_state.db_checked = False
         st.rerun()
+
+    if st.session_state.get("db_ready") and st.session_state.get("selected_run_id"):
+        if st.sidebar.button("Delete selected run", type="primary"):
+            try:
+                delete_run(st.session_state.selected_run_id)
+                st.session_state.selected_run_id = None
+                st.session_state.messages = []
+                st.session_state.latest_df = None
+                st.session_state.latest_json = None
+                st.session_state.latest_summary = None
+                st.session_state.latest_topic = None
+                st.session_state.run_history = []
+                st.rerun()
+            except Exception as exc:
+                st.sidebar.caption(f"Could not delete run: {exc}")
 
     resolved_key = api_key_input or secret_key or env_key
     return resolved_key, model, max_items, time_window, output_style, search_mode
@@ -107,10 +163,45 @@ def build_api_messages(user_prompt: str) -> List[Dict[str, str]]:
     while cleaned and cleaned[0]["role"] != "user":
         cleaned.pop(0)
 
+    # Ensure last history message is assistant (or none) before appending current user.
+    while cleaned and cleaned[-1]["role"] == "user":
+        cleaned.pop()
+
     api_messages: List[Dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
     api_messages.extend(cleaned)
     api_messages.append({"role": "user", "content": user_prompt})
     return api_messages
+
+
+def ensure_db_ready() -> None:
+    if st.session_state.get("db_checked"):
+        return
+    try:
+        init_db()
+        st.session_state.db_ready = True
+        st.session_state.db_error = ""
+    except Exception as exc:  # pragma: no cover - surface to UI
+        st.session_state.db_ready = False
+        st.session_state.db_error = str(exc)
+    finally:
+        st.session_state.db_checked = True
+
+
+def load_latest_run_into_session() -> None:
+    if st.session_state.messages:
+        return
+    if not st.session_state.get("db_ready"):
+        return
+    try:
+        run, msgs, items = fetch_latest_run()
+    except Exception:
+        return
+    if run and msgs:
+        st.session_state.messages = [{"role": m["role"], "content": m["content"]} for m in msgs]
+        st.session_state.latest_summary = run.get("summary")
+        st.session_state.latest_json = run.get("raw_json")
+        st.session_state.latest_topic = run.get("topic")
+        st.session_state.latest_df = pd.DataFrame(items) if items else None
 
 
 def main():
@@ -131,12 +222,19 @@ def main():
             st.info("No APP_PASSWORD configured in secrets; set one to enable access control.")
         return
 
+    ensure_db_ready()
+    load_latest_run_into_session()
+
     api_key, model, max_items, time_window, output_style, search_mode = sidebar_controls()
 
     st.title("Research Desk")
     st.caption("Perplexity Sonar-powered research with structured outputs.")
     mode_label = "Reddit-only" if search_mode == "reddit" else "Default / Web"
     st.caption(f"Active search mode: {mode_label}")
+    if st.session_state.get("db_ready"):
+        st.caption("Database: connected")
+    elif st.session_state.get("db_error"):
+        st.caption(f"Database disabled: {st.session_state.db_error}")
 
     render_chat()
 
@@ -196,6 +294,8 @@ def main():
             df = items_to_dataframe(parsed.items)
             st.session_state.latest_df = df
             st.session_state.latest_json = raw_json
+            st.session_state.latest_summary = parsed.summary
+            st.session_state.latest_topic = topic_input
             st.session_state.run_history.append(
                 {
                     "topic": topic_input,
@@ -205,43 +305,62 @@ def main():
                 }
             )
 
-            st.subheader("Research Summary")
-            st.markdown(parsed.summary)
-
-            st.subheader("Table: Sources & Video Angles")
-            st.dataframe(df, use_container_width=True, hide_index=True)
-
-            st.subheader("Downloads")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.download_button(
-                    "Download CSV",
-                    data=to_csv_bytes(df),
-                    file_name="research_table.csv",
-                    mime="text/csv",
-                )
-            with col2:
-                st.download_button(
-                    "Download JSON",
-                    data=to_json_bytes(raw_json),
-                    file_name="research_raw.json",
-                    mime="application/json",
-                )
-            with col3:
-                st.download_button(
-                    "Download Brief (Markdown)",
-                    data=brief_markdown(topic_input, parsed.summary, df, model),
-                    file_name="research_brief.md",
-                    mime="text/markdown",
-                )
+            if st.session_state.get("db_ready"):
+                try:
+                    save_run(
+                        topic=topic_input,
+                        model=model,
+                        search_mode=search_mode,
+                        time_window=time_window if time_window != "None" else "",
+                        output_style=output_style,
+                        messages=st.session_state.messages,
+                        summary=parsed.summary,
+                        raw_json=raw_json,
+                        items=[item.model_dump() for item in parsed.items],
+                    )
+                except Exception as exc:
+                    st.warning(f"Could not save chat to database: {exc}")
 
             st.session_state.messages.append({"role": "assistant", "content": parsed.summary})
 
     if st.session_state.latest_df is None:
         st.info("Enter a topic to run research. Choose model and options from the sidebar.")
-    else:
-        st.markdown("### Last run")
+    elif st.session_state.latest_summary:
+        st.subheader("Research Summary")
+        st.markdown(st.session_state.latest_summary)
+
+        st.subheader("Table: Sources & Video Angles")
         st.dataframe(st.session_state.latest_df, use_container_width=True, hide_index=True)
+
+        st.subheader("Downloads")
+        col1, col2, col3 = st.columns(3)
+        topic_for_download = st.session_state.latest_topic or "research"
+        with col1:
+            st.download_button(
+                "Download CSV",
+                data=to_csv_bytes(st.session_state.latest_df),
+                file_name="research_table.csv",
+                mime="text/csv",
+            )
+        with col2:
+            st.download_button(
+                "Download JSON",
+                data=to_json_bytes(st.session_state.latest_json or {}),
+                file_name="research_raw.json",
+                mime="application/json",
+            )
+        with col3:
+            st.download_button(
+                "Download Brief (Markdown)",
+                data=brief_markdown(
+                    topic_for_download,
+                    st.session_state.latest_summary,
+                    st.session_state.latest_df,
+                    model,
+                ),
+                file_name="research_brief.md",
+                mime="text/markdown",
+            )
 
 
 if __name__ == "__main__":
