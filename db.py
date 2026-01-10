@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
@@ -10,13 +11,48 @@ import streamlit as st
 from streamlit.runtime.secrets import Secrets, StreamlitSecretNotFoundError
 
 
+def _build_url_from_parts(source: Dict[str, Any]) -> str:
+    user = source.get("user") or source.get("DB_USER")
+    password = source.get("password") or source.get("DB_PASSWORD")
+    host = source.get("host") or source.get("DB_HOST")
+    port = source.get("port") or source.get("DB_PORT")
+    dbname = source.get("dbname") or source.get("DB_NAME") or source.get("database")
+    if not all([user, password, host, port, dbname]):
+        return ""
+    user = str(user).strip()
+    password = urllib.parse.quote_plus(str(password).strip())
+    host = str(host).strip()
+    port = str(port).strip()
+    dbname = str(dbname).strip()
+    return f"postgresql://{user}:{password}@{host}:{port}/{dbname}?sslmode=require"
+
+
 def _get_db_url() -> str:
+    # Prefer full URL from secrets if present
     try:
         secrets: Optional[Secrets] = st.secrets
-        url = secrets.get("DATABASE_URL") if secrets else None
+        if secrets:
+            url = secrets.get("DATABASE_URL")
+            if url:
+                return url
+            alt = _build_url_from_parts(secrets)
+            if alt:
+                return alt
     except StreamlitSecretNotFoundError:
-        url = None
-    return url or os.getenv("DATABASE_URL", "")
+        pass
+
+    # Fallback to env
+    env_url = os.getenv("DATABASE_URL")
+    if env_url:
+        return env_url
+    env_parts = {
+        "user": os.getenv("user") or os.getenv("DB_USER"),
+        "password": os.getenv("password") or os.getenv("DB_PASSWORD"),
+        "host": os.getenv("host") or os.getenv("DB_HOST"),
+        "port": os.getenv("port") or os.getenv("DB_PORT"),
+        "dbname": os.getenv("dbname") or os.getenv("DB_NAME") or os.getenv("database"),
+    }
+    return _build_url_from_parts(env_parts)
 
 
 def connect():
