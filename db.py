@@ -28,23 +28,20 @@ def _build_url_from_parts(source: Dict[str, Any]) -> str:
 
 
 def _get_db_url() -> str:
-    # Prefer full URL from secrets if present
+    # Prefer secrets-derived pooler settings first
     try:
         secrets: Optional[Secrets] = st.secrets
         if secrets:
-            url = secrets.get("DATABASE_URL")
-            if url:
-                return url
             alt = _build_url_from_parts(secrets)
             if alt:
                 return alt
+            url = secrets.get("DATABASE_URL")
+            if url:
+                return url
     except StreamlitSecretNotFoundError:
         pass
 
-    # Fallback to env
-    env_url = os.getenv("DATABASE_URL")
-    if env_url:
-        return env_url
+    # Next, try env parts (DB_USER/DB_PASSWORD or user/password, etc.)
     env_parts = {
         "user": os.getenv("user") or os.getenv("DB_USER"),
         "password": os.getenv("password") or os.getenv("DB_PASSWORD"),
@@ -52,7 +49,13 @@ def _get_db_url() -> str:
         "port": os.getenv("port") or os.getenv("DB_PORT"),
         "dbname": os.getenv("dbname") or os.getenv("DB_NAME") or os.getenv("database"),
     }
-    return _build_url_from_parts(env_parts)
+    alt_env = _build_url_from_parts(env_parts)
+    if alt_env:
+        return alt_env
+
+    # Last resort: DATABASE_URL
+    env_url = os.getenv("DATABASE_URL")
+    return env_url or ""
 
 
 def connect():
